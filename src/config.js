@@ -25,6 +25,7 @@ const config = {
     botUsername:    required('BOT_USERNAME'),
     channelName:    required('CHANNEL_NAME'),
     clientId:       required('TWITCH_CLIENT_ID'),
+    clientSecret:   required('TWITCH_CLIENT_SECRET'), // <-- Added
     accessToken:    required('TWITCH_ACCESS_TOKEN'),
     refreshToken:   required('TWITCH_REFRESH_TOKEN'),
   },
