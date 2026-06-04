@@ -16,4 +16,4 @@ module.exports = {
 
     // Stat tracking variables
     deathCounts: {},
-};
+}
