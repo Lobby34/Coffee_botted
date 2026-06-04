@@ -12,4 +12,8 @@ module.exports = {
     //Cooldown variables
     isOnCooldown: false,
     COOLDOWN_SECONDS: 10,
+    isDeathOnCooldown: false,
+
+    // Stat tracking variables
+    deathCounts: {},
 };

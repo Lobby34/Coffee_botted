@@ -30,7 +30,7 @@ const rrshoot = {
     let shooterIsTarget = true;
 
     if (args && args.length > 0) {
-      targetUsername = args[0].replace(/^@/, '').toLowerCase();
+      targetUsername = args[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
       targetDisplayName = targetUsername;
       shooterIsTarget = false;
     }
@@ -42,27 +42,37 @@ const rrshoot = {
 
     logger.info('Gun shooted', { targetUsername, roll, lost });
 
+    // LOSS HANDLING
     if (lost) {
+      gameState.currentChambers = gameState.CHAMBERS
       if (!shooterIsTarget) {
         await client.say(
           channel,
           `@${shooterDisplayName} points the revolver at @${targetDisplayName} and pulls the trigger... monkaH The trigger is pulled. A bullet fired. F for ${targetDisplayName} HAH  GAMBAADDICT LMAO`,
-          gameState.currentChambers = gameState.CHAMBERS
         );
       } else {
         await client.say(
           channel,
           `@${targetDisplayName} pulls the trigger of the revolver... monkaH The trigger is pulled. A bullet fired. F for ${targetDisplayName} HAH  GAMBAADDICT LMAO`,
-          gameState.currentChambers = gameState.CHAMBERS
         );
       }
-        try {
-          await client.timeout(channel, targetUsername, gameState.TIMEOUT_SECONDS, gameState.TIMEOUT_REASON);
-        } catch (err) {
-          // This can happen if the bot isn't a mod in the channel
-          logger.error('Failed to timeout user — is the bot a mod?', { targetUsername, err: err.message });
-          await client.say(channel, `Even legends such as @${targetDisplayName} can't escape their fate!.`);
-        }
+
+    // DEATH COUNT HANDLING
+      if (!gameState.deathCounts[targetUsername]) {
+        gameState.deathCounts[targetUsername] = 0;
+      }
+      gameState.deathCounts[targetUsername]++;
+
+
+    // TIMEOUT HANDLING
+      try {
+        await client.timeout(channel, targetUsername, gameState.TIMEOUT_SECONDS, gameState.TIMEOUT_REASON);
+      } catch (err) {
+        // This can happen if the bot isn't a mod in the channel
+        logger.error('Failed to timeout user — is the bot a mod?', { targetUsername, err: err.message });
+        await client.say(channel, `Even legends such as @${targetDisplayName} can't escape their fate!.`);
+      }
+    // WIN HANDLING
     } else {
       if (!shooterIsTarget) {
         await client.say(

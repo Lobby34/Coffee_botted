@@ -29,6 +29,13 @@ class TwitchClient extends EventEmitter {
       }
 
       // Connect EventSub
+      if (this.ws) {
+        this.ws.removeAllListeners();
+        if (this.ws.readyState === WebSocket.OPEN) {
+            this.ws.close();
+        }
+      }
+
       this.ws = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
 
       this.ws.on('message', async (data) => {
@@ -39,33 +46,49 @@ class TwitchClient extends EventEmitter {
             const sessionId = message.payload.session.id;
             await this.subscribeToChat(sessionId);
             this.emit('connected', 'eventsub', 443);
+            logger.info('Successfully connected and subscribed to chat!');
           } 
-          
+          else if (message.metadata.message_type === 'session_reconnect') {
+            logger.warn('Twitch requested a session reconnect. Auto-reconnecting...');
+            this.reconnect();
+          }
           else if (message.metadata.message_type === 'notification') {
             if (message.metadata.subscription_type === 'channel.chat.message') {
               this.handleIncomingMessage(message.payload.event);
             }
           }
         } catch (err) {
-          console.error("\n CRITICAL EVENTSUB ERROR:", err.message, "\n");
+          logger.error("\n CRITICAL EVENTSUB ERROR:", err.message, "\n");
         }
       });
 
-      this.ws.on('close', () => logger.warn('Disconnected from Twitch EventSub'));
-      this.ws.on('error', (err) => logger.error('WebSocket error', { err: err.message }));
+      // Reconnect Triggers
+      this.ws.on('close', () => {
+        logger.warn('Disconnected from Twitch EventSub. Auto-reconnecting in 5 seconds...');
+        this.reconnect();
+      });
+
+      this.ws.on('error', (err) => {
+        logger.error('WebSocket error', { err: err.message });
+      });
 
     } catch (err) {
       logger.error('Failed to connect EventSub client', { err: err.message });
-      throw err;
+      this.reconnect();
     }
+  }
+
+  reconnect() {
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => {
+      this.connect();
+    }, 5000);
   }
 
   async getAppToken() {
     const params = new URLSearchParams({
-      client_id: '44n5nnswu252epfhj8f9duoostx5u5',
-      client_secret: 'q2b81rp1x3coxcsgg0qk0cu6qyv43i',
-      // client_id: config.twitch.clientId,
-      // client_secret: config.twitch.clientSecret,
+      client_id: config.twitch.clientId,
+      client_secret: config.twitch.clientSecret,
       grant_type: 'client_credentials'
     });
     const res = await fetch(`https://id.twitch.tv/oauth2/token`, { method: 'POST', body: params });
@@ -94,7 +117,7 @@ class TwitchClient extends EventEmitter {
       method: 'POST',
       headers: {
         'Client-Id': config.twitch.clientId,
-        'Authorization': `Bearer ${config.twitch.accessToken}`, // <-- Changed to User Token!
+        'Authorization': `Bearer ${config.twitch.accessToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
