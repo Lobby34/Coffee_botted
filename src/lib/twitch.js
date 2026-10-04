@@ -2,8 +2,11 @@
 
 const EventEmitter = require('events');
 const WebSocket = require('ws');
+const fs = require('fs');
+const path = require('path');
 const config = require('../config');
 const logger = require('./logger');
+
 
 class TwitchClient extends EventEmitter {
   constructor() {
@@ -16,6 +19,9 @@ class TwitchClient extends EventEmitter {
 
   async connect() {
     try {
+      // Validate and refresh the access token if needed
+      await this.validateAndRefreshToken();
+
       // Get App Access Token
       this.appToken = await this.getAppToken();
 
@@ -97,6 +103,62 @@ class TwitchClient extends EventEmitter {
     console.log("APP TOKEN RESPONSE:", data); // <--- ADD THIS LINE
 
     return data.access_token;
+  }
+
+  async validateAndRefreshToken() {
+    // 1. Check if the current token is still valid
+    const res = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: { 'Authorization': `OAuth ${config.twitch.accessToken}` }
+    });
+
+    if (!res.ok) {
+      logger.warn('Token expired or invalid. Attempting to refresh...');
+      await this.performTokenRefresh();
+    } else {
+      const data = await res.json();
+      logger.info(`Token is valid. Expires in ${Math.floor(data.expires_in / 60)} minutes.`);
+      
+      // If it expires in less than 30 minutes, refresh it anyway just to be safe
+      if (data.expires_in < 1800) {
+        await this.performTokenRefresh();
+      }
+    }
+  }
+
+  async performTokenRefresh() {
+    const params = new URLSearchParams({
+      client_id: config.twitch.clientId,
+      client_secret: config.twitch.clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: config.twitch.refreshToken
+    });
+
+    const res = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      body: params
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(`Failed to refresh token: ${err.message}`);
+    }
+
+    const data = await res.json();
+
+    //Update  tokens in memory
+    config.twitch.accessToken = data.access_token;
+    config.twitch.refreshToken = data.refresh_token;
+
+    //Update .env file 
+    const envPath = path.resolve(__dirname, '../.env');
+    let envContent = fs.readFileSync(envPath, 'utf8');
+
+    // Replace old tokens with new ones
+    envContent = envContent.replace(/TWITCH_ACCESS_TOKEN=.*/, `TWITCH_ACCESS_TOKEN=${data.access_token}`);
+    envContent = envContent.replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${data.refresh_token}`);
+
+    fs.writeFileSync(envPath, envContent);
+    logger.info('Successfully refreshed Twitch tokens and updated .env file!');
   }
 
   async getUsers(logins) {

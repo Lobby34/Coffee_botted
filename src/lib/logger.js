@@ -5,7 +5,7 @@ const config = require('../config');
 
 const { combine, timestamp, printf, colorize, errors } = format;
 
-// Human-readable format for development
+// Log format for development
 const devFormat = combine(
   colorize(),
   timestamp({ format: 'HH:mm:ss' }),
@@ -19,7 +19,7 @@ const devFormat = combine(
   })
 );
 
-// Structured JSON format production ready
+// Logs in JSON for production
 const prodFormat = combine(
   timestamp(),
   errors({ stack: true }),

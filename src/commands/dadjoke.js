@@ -10,7 +10,7 @@ const dadjoke = {
   description: `Tells a random dad joke from the joke book!`,
 
   async execute({ client, channel, userstate }) {
-    // 1. Check local cooldown to prevent chat spam
+    // Local cooldown to prevent command spam.
     if (gameState.isOnCooldown) {
       return; 
     }
@@ -21,7 +21,6 @@ const dadjoke = {
     }, gameState.COOLDOWN_SECONDS * 1000);
 
     try {
-      // Locate joke file
       const filePath = path.join(__dirname, '../data/jokes.txt');
 
       // Live read file (may hinder performance)

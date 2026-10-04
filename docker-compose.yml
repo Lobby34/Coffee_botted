@@ -5,17 +5,36 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./logs:/app/logs
-
     deploy:
       resources:
         limits:
           memory: 128M
           cpus: '0.25'
-
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: twitch-bot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
