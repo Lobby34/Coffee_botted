@@ -1,6 +1,12 @@
 'use strict';
 
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const tokenFile = process.env.TWITCH_TOKEN_FILE || path.resolve(__dirname, '../data/twitch-tokens.json');
+const savedTokens = fs.existsSync(tokenFile)
+  ? JSON.parse(fs.readFileSync(tokenFile, 'utf8')) : {};
+
 
 /**
  * Reads a required environment variable.
@@ -22,12 +28,13 @@ function optional(key, defaultValue) {
 
 const config = {
   twitch: {
+    tokenFile,
     botUsername:    required('BOT_USERNAME'),
     channelName:    required('CHANNEL_NAME'),
     clientId:       required('TWITCH_CLIENT_ID'),
     clientSecret:   required('TWITCH_CLIENT_SECRET'),
-    accessToken:    required('TWITCH_ACCESS_TOKEN'),
-    refreshToken:   required('TWITCH_REFRESH_TOKEN'),
+    accessToken:    savedTokens.accessToken || required('TWITCH_ACCESS_TOKEN'),
+    refreshToken:   savedTokens.refreshToken || required('TWITCH_REFRESH_TOKEN'),
   },
 
   bot: {

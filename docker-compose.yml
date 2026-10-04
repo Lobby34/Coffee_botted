@@ -10,6 +10,7 @@ services:
         condition: service_healthy
     volumes:
       - ./logs:/app/logs
+      - twitch-tokens:/app/data
     deploy:
       resources:
         limits:
@@ -38,3 +39,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+volumes:
+  twitch-tokens:

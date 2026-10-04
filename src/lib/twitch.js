@@ -15,12 +15,23 @@ class TwitchClient extends EventEmitter {
     this.broadcaster = null;
     this.botUser = null;
     this.ws = null;
+    this.tokenCheck = null;
   }
 
   async connect() {
     try {
       // Validate and refresh the access token if needed
       await this.validateAndRefreshToken();
+      if (!this.tokenTimer) {
+        this.tokenTimer = setInterval(() => {
+          this.validateAndRefreshToken().catch(err => {
+            logger.error('OAuth maintenance failed', { err: err.message });
+            if (this.ws) this.ws.close();
+            this.reconnect();
+          });
+        }, 15 * 60 * 1000);
+        this.tokenTimer.unref();
+      }
 
       // Get App Access Token
       this.appToken = await this.getAppToken();
@@ -47,13 +58,13 @@ class TwitchClient extends EventEmitter {
       this.ws.on('message', async (data) => {
         try {
           const message = JSON.parse(data);
-          
+
           if (message.metadata.message_type === 'session_welcome') {
             const sessionId = message.payload.session.id;
             await this.subscribeToChat(sessionId);
             this.emit('connected', 'eventsub', 443);
             logger.info('Successfully connected and subscribed to chat!');
-          } 
+          }
           else if (message.metadata.message_type === 'session_reconnect') {
             logger.warn('Twitch requested a session reconnect. Auto-reconnecting...');
             this.reconnect();
@@ -100,24 +111,35 @@ class TwitchClient extends EventEmitter {
     const res = await fetch(`https://id.twitch.tv/oauth2/token`, { method: 'POST', body: params });
     const data = await res.json();
 
-    console.log("APP TOKEN RESPONSE:", data); // <--- ADD THIS LINE
+    if (!res.ok || !data.access_token) {
+      throw new Error(`App token request failed (HTTP ${res.status})`);
+    }
 
     return data.access_token;
   }
 
   async validateAndRefreshToken() {
+    if (!this.tokenCheck) {
+      this.tokenCheck = this.checkToken().finally(() => { this.tokenCheck = null; });
+    }
+    return this.tokenCheck;
+  }
+
+  async checkToken() {
     // 1. Check if the current token is still valid
     const res = await fetch('https://id.twitch.tv/oauth2/validate', {
       headers: { 'Authorization': `OAuth ${config.twitch.accessToken}` }
     });
 
-    if (!res.ok) {
+    if (res.status === 401) {
       logger.warn('Token expired or invalid. Attempting to refresh...');
       await this.performTokenRefresh();
+    } else if (!res.ok) {
+      throw new Error(`Token validation failed (HTTP ${res.status})`);
     } else {
       const data = await res.json();
       logger.info(`Token is valid. Expires in ${Math.floor(data.expires_in / 60)} minutes.`);
-      
+
       // If it expires in less than 30 minutes, refresh it anyway just to be safe
       if (data.expires_in < 1800) {
         await this.performTokenRefresh();
@@ -139,26 +161,26 @@ class TwitchClient extends EventEmitter {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(`Failed to refresh token: ${err.message}`);
+      throw new Error(`Failed to refresh token (HTTP ${res.status}); Twitch authorization may need to be renewed`);
     }
 
     const data = await res.json();
 
-    //Update  tokens in memory
+    if (!data.access_token || !data.refresh_token) {
+      throw new Error('Token refresh response is missing credentials');
+    }
+    // Persist the rotated pair atomically on the mounted volume.
+    const tokenPath = config.twitch.tokenFile;
+    fs.mkdirSync(path.dirname(tokenPath), { recursive: true, mode: 0o700 });
+    const temporaryPath = `${tokenPath}.tmp`;
+    fs.writeFileSync(temporaryPath, JSON.stringify({
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+    }), { mode: 0o600 });
+    fs.renameSync(temporaryPath, tokenPath);
     config.twitch.accessToken = data.access_token;
     config.twitch.refreshToken = data.refresh_token;
-
-    //Update .env file 
-    const envPath = path.resolve(__dirname, '../.env');
-    let envContent = fs.readFileSync(envPath, 'utf8');
-
-    // Replace old tokens with new ones
-    envContent = envContent.replace(/TWITCH_ACCESS_TOKEN=.*/, `TWITCH_ACCESS_TOKEN=${data.access_token}`);
-    envContent = envContent.replace(/TWITCH_REFRESH_TOKEN=.*/, `TWITCH_REFRESH_TOKEN=${data.refresh_token}`);
-
-    fs.writeFileSync(envPath, envContent);
-    logger.info('Successfully refreshed Twitch tokens and updated .env file!');
+    logger.info('Successfully refreshed and persisted Twitch tokens');
   }
 
   async getUsers(logins) {
@@ -170,7 +192,7 @@ class TwitchClient extends EventEmitter {
       }
     });
     const data = await res.json();
-    console.log("TWITCH API RESPONSE:", data);
+
     return data.data || [];
   }
 
@@ -207,7 +229,7 @@ class TwitchClient extends EventEmitter {
       mod: event.badges?.some(b => b.set_id === 'moderator') || false,
       badges: event.badges?.reduce((acc, b) => { acc[b.set_id] = b.id; return acc; }, {}) || {}
     };
-    
+
     const message = event.message.text;
     const self = event.chatter_user_id === this.botUser.id;
     this.emit('message', config.twitch.channelName, userstate, message, self);

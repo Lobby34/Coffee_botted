@@ -19,6 +19,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY src/ ./src/
 COPY package.json ./
 
+RUN mkdir -p /app/data && chown botuser:botgroup /app/data
+
 USER botuser
 
 # HEALTHCHECK TO ENSURE THE BOT IS RUNNING
