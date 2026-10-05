@@ -11,6 +11,6 @@ module.exports = {
   },
   async execute({ client, channel }) {
     const count = gameState.get('zuh');
-    await client.say(channel, `GOAT COUNTER: ${count} zuh SO FAR`);
+    await client.say(channel, `${count} zuh .`);
   },
 };
