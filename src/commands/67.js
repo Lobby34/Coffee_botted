@@ -4,13 +4,14 @@ const gameState = require('../gameStates/messageCounterGameState');
 
 module.exports = {
   name: '67',
-  description: 'Show the persistent 67 message count.',
-  matches: message => message.toLowerCase().includes('67'),
-  observe() {
-    gameState.increment('67');
+  description: 'Count and reply to every message containing 67.',
+  automaticReply: true,
+  matches: message => message.includes('67'),
+  async observe({ client, channel }) {
+    const count = gameState.increment('67');
+    await client.say(channel, `This ABERRATION of a number has been said ${count} times`);
   },
-  async execute({ client, channel }) {
-    const count = gameState.get('67');
-    await client.say(channel, `This ABERRATION of a number has been said ${count} times so far`);
+  async execute() {
+    // Matching messages, including !67, are handled once by observe.
   },
 };

@@ -6,18 +6,19 @@ function createMessageHandler({ commands, client, prefix, logger }) {
     const [rawCommand, ...args] = message.startsWith(prefix)
       ? message.slice(prefix.length).trim().split(/\s+/) : [];
     const command = rawCommand ? commands.get(rawCommand.toLowerCase()) : undefined;
-    // Counter queries are read-only; ordinary messages are observed silently.
-    if (!command || typeof command.observe !== 'function') {
+    // Automatic replies also run on query messages; silent counter queries stay read-only.
+    {
       for (const observer of commands.values()) {
         if (typeof observer.observe !== 'function' || !observer.matches(message)) continue;
+        if (!observer.automaticReply && command && typeof command.observe === 'function') continue;
         try {
-          await observer.observe({ channel, userstate, message });
+          await observer.observe({ client, channel, userstate, message });
         } catch (err) {
           logger.error('Unhandled error in message counter', { command: observer.name, err: err.message });
         }
       }
     }
-    if (!command) return;
+    if (!command || command.automaticReply) return;
     logger.info('Command invoked', { command: command.name, user: userstate.username, channel });
     try {
       await command.execute({ client, channel, userstate, message, args });
