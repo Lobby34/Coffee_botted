@@ -5,6 +5,7 @@ const config = require('./config');
 const logger = require('./lib/logger');
 const { createClient } = require('./lib/twitch');
 const { loadCommands } = require('./commands');
+const { createMessageHandler } = require('./lib/messageHandler');
 
 async function main() {
   logger.info('Starting bot...', {
@@ -23,36 +24,9 @@ async function main() {
     logger.info(`Connected to Twitch`, { addr, port, channel: config.twitch.channelName });
   });
 
-  // Main message handler
-  client.on('message', async (channel, userstate, message, self) => {
-    // Ignore messages sent by the bot itself
-    if (self) return;
-
-    const prefix = config.bot.commandPrefix;
-
-    // Ignore non command prefixed messages
-    if (!message.startsWith(prefix)) return;
-
-    // Parse command name and arguments
-    const [rawCommand, ...args] = message.slice(prefix.length).trim().split(/\s+/);
-    const commandName = rawCommand.toLowerCase();
-
-    const command = commands.get(commandName);
-    //Ignore unknown commands
-    if (!command) return;
-
-    logger.info('Command invoked', {
-      command: commandName,
-      user:    userstate.username,
-      channel,
-    });
-
-    try {
-      await command.execute({ client, channel, userstate, args });
-    } catch (err) {
-      logger.error('Unhandled error in command', { command: commandName, err: err.message });
-    }
-  });
+  client.on('message', createMessageHandler({
+    commands, client, prefix: config.bot.commandPrefix, logger,
+  }));
 
   await client.connect();
 }
