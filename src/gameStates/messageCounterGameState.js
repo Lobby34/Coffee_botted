@@ -10,6 +10,9 @@ for (const [key, value] of Object.entries(counts)) {
 }
 
 module.exports = {
+  get(key) {
+    return counts[key] || 0;
+  },
   increment(key) {
     const next = { ...counts, [key]: (counts[key] || 0) + 1 };
     if (!Number.isSafeInteger(next[key])) throw new Error('Message counter overflow');

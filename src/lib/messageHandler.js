@@ -3,24 +3,27 @@
 function createMessageHandler({ commands, client, prefix, logger }) {
   return async (channel, userstate, message, self) => {
     if (self) return;
-    async function execute(command, args = []) {
-      try {
-        await command.execute({ client, channel, userstate, message, args });
-      } catch (err) {
-        logger.error('Unhandled error in command', { command: command.name, err: err.message });
+    const [rawCommand, ...args] = message.startsWith(prefix)
+      ? message.slice(prefix.length).trim().split(/\s+/) : [];
+    const command = rawCommand ? commands.get(rawCommand.toLowerCase()) : undefined;
+    // Counter queries are read-only; ordinary messages are observed silently.
+    if (!command || typeof command.observe !== 'function') {
+      for (const observer of commands.values()) {
+        if (typeof observer.observe !== 'function' || !observer.matches(message)) continue;
+        try {
+          await observer.observe({ channel, userstate, message });
+        } catch (err) {
+          logger.error('Unhandled error in message counter', { command: observer.name, err: err.message });
+        }
       }
     }
-    // Automatic commands inspect the whole message, independently of the prefix.
-    const matching = [...commands.values()].filter(command =>
-      typeof command.matches === 'function' && command.matches(message));
-    await Promise.all(matching.map(command => execute(command)));
-    if (!message.startsWith(prefix)) return;
-    const [rawCommand, ...args] = message.slice(prefix.length).trim().split(/\s+/);
-    const command = commands.get(rawCommand.toLowerCase());
-    // Automatic commands have already run above, including !67 and !zuh.
-    if (!command || typeof command.matches === 'function') return;
+    if (!command) return;
     logger.info('Command invoked', { command: command.name, user: userstate.username, channel });
-    await execute(command, args);
+    try {
+      await command.execute({ client, channel, userstate, message, args });
+    } catch (err) {
+      logger.error('Unhandled error in command', { command: command.name, err: err.message });
+    }
   };
 }
 
