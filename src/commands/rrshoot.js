@@ -2,13 +2,11 @@
 
 const logger = require('../lib/logger');
 const gameState = require('../gameStates/rrGameState');
-/**
- * !rrshoot [optional: @username] - Take your chances with Russian Roulette. 
- * The user takes their chances. 1 in CHAMBERS to get timed out for TIMEOUT_SECONDS seconds.
- */
+const deaths = require('../lib/rouletteStore');
+// Roll remaining chambers; persist deaths before dispatching loss effects.
 const rrshoot = {
   name: 'rrshoot',
-  description: `Take your chances — 1 in ${gameState.CHAMBERS} to get timed out for ${gameState.TIMEOUT_SECONDS} seconds!`,
+  description: 'Roll a chamber and timeout the losing target.',
 
   async execute({ client, channel, userstate, args }) {
 
@@ -42,9 +40,9 @@ const rrshoot = {
 
     logger.info('Gun shooted', { targetUsername, roll, lost });
 
-    // LOSS HANDLING
     if (lost) {
-      gameState.currentChambers = gameState.CHAMBERS
+      gameState.currentChambers = gameState.CHAMBERS;
+      await deaths.increment(targetUsername);
       if (!shooterIsTarget) {
         await client.say(
           channel,
@@ -57,22 +55,12 @@ const rrshoot = {
         );
       }
 
-    // DEATH COUNT HANDLING
-      if (!gameState.deathCounts[targetUsername]) {
-        gameState.deathCounts[targetUsername] = 0;
-      }
-      gameState.deathCounts[targetUsername]++;
-
-
-    // TIMEOUT HANDLING
       try {
         await client.timeout(channel, targetUsername, gameState.TIMEOUT_SECONDS, gameState.TIMEOUT_REASON);
       } catch (err) {
-        // This can happen if the bot isn't a mod in the channel
         logger.error('Failed to timeout user — is the bot a mod?', { targetUsername, err: err.message });
         await client.say(channel, `Even legends such as @${targetDisplayName} can't escape their fate!.`);
       }
-    // WIN HANDLING
     } else {
       if (!shooterIsTarget) {
         await client.say(

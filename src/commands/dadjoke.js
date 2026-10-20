@@ -2,14 +2,13 @@
 
 const logger = require('../lib/logger');
 const gameState = require('../gameStates/dadjokeGameState');
-const jokes = require('../gameStates/dadjokeStore');
+const jokes = require('../lib/dadjokeStore');
 
 const dadjoke = {
   name: 'dadjoke',
-  description: `Tells a random dad joke from the joke book!`,
+  description: 'Send a random PostgreSQL dad joke.',
 
   async execute({ client, channel, userstate }) {
-    // Local cooldown to prevent command spam.
     if (gameState.isOnCooldown) {
       return; 
     }
@@ -26,7 +25,6 @@ const dadjoke = {
         return;
       }
 
-      // MESSAGE HANDLING
       await client.say(channel, randomJoke);
       logger.info('Told a dad joke', { user: userstate.username });
 

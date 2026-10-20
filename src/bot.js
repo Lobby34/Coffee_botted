@@ -12,16 +12,15 @@ async function main() {
     channel: config.twitch.channelName,
     bot:     config.twitch.botUsername,
     env:     config.app.nodeEnv,
+    version: require('../package.json').version,
   });
 
-  await require('./gameStates/messageCounterGameState').initialize();
-  await require('./gameStates/dadjokeStore').initialize();
-  logger.info('PostgreSQL message counters and dad jokes ready');
+  await require('./lib/database').getPool().query('SELECT 1');
 
-  // Load commands from src/commands/
+  // Register command handlers.
   const commands = loadCommands();
 
-  // Create and connect the tmi.js client
+  // Connect EventSub.
   const client = createClient();
 
   client.on('connected', (addr, port) => {

@@ -27,4 +27,4 @@ USER botuser
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD pgrep -f "node src/bot.js" || exit 1
 
-CMD ["node", "src/bot.js"]
+CMD ["sh", "-c", "node src/DB/Initialization/index.js && exec node src/bot.js"]

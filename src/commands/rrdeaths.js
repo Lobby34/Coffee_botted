@@ -2,10 +2,11 @@
 
 const logger = require('../lib/logger');
 const gameState = require('../gameStates/rrGameState');
+const deaths = require('../lib/rouletteStore');
 
 const checkDeaths = {
     name: 'rrdeaths',
-    description: `Check the global death count!`,
+    description: 'Return the top five persisted roulette death counts.',
 
     async execute({ client, channel, userstate }) {
         if (gameState.isDeathOnCooldown) {
@@ -19,19 +20,18 @@ const checkDeaths = {
         const username = userstate.username;
         logger.info('Deaths Checked', { username });
 
-        const entries = Object.entries(gameState.deathCounts);
+        const entries = await deaths.leaderboard();
 
-        // Handle no deaths scenario
         if (entries.length === 0) {
             await client.say(channel, `The graveyard is EMPTY?? How is this possible?! monkaH`);
             return;
         }
 
-        const leaderboard = entries.sort((a, b) => b[1] - a[1]).slice(0, 5).map(([user, count], index) => `${index + 1}. ${user}: ${count} deaths`).join('\n');
+        const leaderboard = entries.map(({ username: user, count }, index) => `${index + 1}. ${user}: ${count} deaths`).join(' | ');
 
         await client.say(
             channel,
-            `Total death leaderboard:'\n' ${leaderboard}`
+            `Total death leaderboard: ${leaderboard}`
         );
     },
 };
