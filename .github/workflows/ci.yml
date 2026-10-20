@@ -1,0 +1,76 @@
+name: Bot CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bot-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Bot checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: bot_ci
+          POSTGRES_PASSWORD: bot_ci
+          POSTGRES_DB: bot_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bot_ci -d bot_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: 'true'
+      COUNTER_TEST_DB: '1'
+      DB_HOST: 127.0.0.1
+      COUNTER_TEST_HOST: 127.0.0.1
+      DB_PORT: '5432'
+      DB_USER: bot_ci
+      DB_PASSWORD: bot_ci
+      DB_NAME: bot_ci
+      BOT_USERNAME: ci_bot
+      CHANNEL_NAME: ci_channel
+      TWITCH_CLIENT_ID: ci_client
+      TWITCH_CLIENT_SECRET: ci_secret
+      TWITCH_ACCESS_TOKEN: ci_access
+      TWITCH_REFRESH_TOKEN: ci_refresh
+      TWITCH_TOKEN_FILE: /tmp/coffee-ci-no-tokens.json
+      MESSAGE_COUNTER_FILE: /tmp/coffee-ci-no-counters.json
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Syntax, startup, database and command tests
+        run: npm run test:ci
+      - name: Build production image
+        run: docker build --tag coffee-bot-ci .
+      - name: Verify production image startup
+        run: |
+          docker run --rm --network host \
+            --mount type=bind,source="$PWD/.github",target=/app/.github,readonly \
+            -e COUNTER_TEST_DB -e COUNTER_TEST_HOST \
+            -e DB_HOST -e DB_PORT -e DB_USER -e DB_PASSWORD -e DB_NAME \
+            -e BOT_USERNAME -e CHANNEL_NAME \
+            -e TWITCH_CLIENT_ID -e TWITCH_CLIENT_SECRET \
+            -e TWITCH_ACCESS_TOKEN -e TWITCH_REFRESH_TOKEN \
+            -e TWITCH_TOKEN_FILE -e MESSAGE_COUNTER_FILE -e NODE_ENV \
+            coffee-bot-ci node --test .github/checks/startup.test.js

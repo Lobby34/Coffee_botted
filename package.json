@@ -1,12 +1,13 @@
 {
   "name": "twitch-bot",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "",
   "main": "src/bot.js",
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --test .github/checks/*.test.js",
     "start": "node src/DB/Initialization/index.js && node src/bot.js",
-    "dev": "node src/DB/Initialization/index.js && node --watch src/bot.js"
+    "dev": "node src/DB/Initialization/index.js && node --watch src/bot.js",
+    "test:ci": "node .github/checks/syntax.js && node --test .github/checks/*.test.js"
   },
   "keywords": [],
   "author": "",
