@@ -3,6 +3,8 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const tokenMode = optional('TWITCH_TOKEN_MODE', 'local');
+if (!['local', 'managed'].includes(tokenMode)) throw new Error('Invalid TWITCH_TOKEN_MODE');
 const tokenFile = process.env.TWITCH_TOKEN_FILE || path.resolve(__dirname, '../data/twitch-tokens.json');
 const savedTokens = fs.existsSync(tokenFile)
   ? JSON.parse(fs.readFileSync(tokenFile, 'utf8')) : {};
@@ -29,24 +31,21 @@ function optional(key, defaultValue) {
 const config = {
   twitch: {
     tokenFile,
+    tokenMode,
+    managedOverrideFile: optional('TWITCH_MANAGED_OVERRIDE_FILE', ''),
     botUsername:    required('BOT_USERNAME'),
     channelName:    required('CHANNEL_NAME'),
     clientId:       required('TWITCH_CLIENT_ID'),
     clientSecret:   required('TWITCH_CLIENT_SECRET'),
     accessToken:    savedTokens.accessToken || required('TWITCH_ACCESS_TOKEN'),
-    refreshToken:   savedTokens.refreshToken || required('TWITCH_REFRESH_TOKEN'),
+    refreshToken:   tokenMode === 'managed' ? undefined : savedTokens.refreshToken || required('TWITCH_REFRESH_TOKEN'),
   },
 
-  database: {
-    host: optional('DB_HOST', 'postgres'),
-    port: Number(optional('DB_PORT', '5432')),
-    user: required('DB_USER'),
-    password: required('DB_PASSWORD'),
-    database: required('DB_NAME'),
-  },
+  database: require('./DB/config').databaseConfig(),
 
   bot: {
     commandPrefix: optional('COMMAND_PREFIX', '!'),
+    brewEnabled: optional('BREW_ENABLED','false') === 'true',
   },
 
   app: {

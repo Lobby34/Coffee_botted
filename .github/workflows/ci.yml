@@ -3,7 +3,7 @@ name: Bot CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, codex/dev]
   workflow_dispatch:
 
 permissions:
@@ -74,3 +74,12 @@ jobs:
             -e TWITCH_ACCESS_TOKEN -e TWITCH_REFRESH_TOKEN \
             -e TWITCH_TOKEN_FILE -e MESSAGE_COUNTER_FILE -e NODE_ENV \
             coffee-bot-ci node --test .github/checks/startup.test.js
+      - name: Build Brew web image
+        run: docker build --file web/Dockerfile --tag coffee-brew-ci .
+      - name: Verify Brew database and HTTP routes in web image
+        run: |
+          docker run --rm --network host \
+            --mount type=bind,source="$PWD/.github",target=/app/.github,readonly \
+            -e COUNTER_TEST_DB -e COUNTER_TEST_HOST \
+            -e DB_HOST -e DB_PORT -e DB_USER -e DB_PASSWORD -e DB_NAME \
+            coffee-brew-ci node --test .github/checks/brew.test.js .github/checks/brewInventory.test.js

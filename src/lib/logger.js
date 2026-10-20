@@ -1,7 +1,7 @@
 'use strict';
 
 const { createLogger, format, transports } = require('winston');
-const config = require('../config');
+const isDev = (process.env.NODE_ENV || 'development') === 'development';
 
 const { combine, timestamp, printf, colorize, errors } = format;
 
@@ -28,7 +28,7 @@ const prodFormat = combine(
 
 const logger = createLogger({
   level: 'info',
-  format: config.app.isDev ? devFormat : prodFormat,
+  format: isDev ? devFormat : prodFormat,
   transports: [new transports.Console()],
 });
 

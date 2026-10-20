@@ -4,15 +4,19 @@ const path = require('path');
 const { initializeCounters } = require('./messageCounters');
 const { initializeDadJokes } = require('./dadjokes');
 const { initializeRoulette } = require('./roulette');
+const { initializeCommandLogs } = require('./commandLogs');
+const { initializeBrew } = require('./brew');
 
 async function initializeDatabase(pool) {
   await initializeCounters(pool, process.env.MESSAGE_COUNTER_FILE || path.resolve(__dirname, '../../../data/message-counters.json'));
   await initializeDadJokes(pool, path.resolve(__dirname, '../../data/jokes.txt'));
   await initializeRoulette(pool);
+  await initializeCommandLogs(pool);
+  await initializeBrew(pool);
 }
 
 if (require.main === module) {
-  require('../../config');
+  require('dotenv').config();
   const database = require('../../lib/database');
   (async () => {
     try {

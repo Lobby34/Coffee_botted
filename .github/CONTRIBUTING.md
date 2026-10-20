@@ -11,3 +11,5 @@ Make `Bot checks` a required status check for `main` in GitHub repository settin
 Use short Odoo-style commit titles, for example `[FIX] twitch-bot: handle missing chat subscription`. Bump both package versions: patch for fixes or tooling, minor for compatible features, major for breaking changes. Run `npm version patch|minor|major --no-git-tag-version`.
 
 `test/` contains ignored local checks. Shared CI checks live under `.github/checks/` and must be committed so GitHub can run them.
+
+Command handlers receive an optional `audit` context. Invocation details, `client.say()` responses, errors, and `client.timeout()` results are captured automatically. Use `audit?.set({ roll, chambers_remaining })` for command-specific variables, `audit?.cooldown()` for suppressed invocations, and `audit?.error(err)` when handling an error locally. Audit writes happen after replies; shutdown drains active handlers before closing PostgreSQL.

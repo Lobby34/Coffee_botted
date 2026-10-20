@@ -8,9 +8,10 @@ const rrshoot = {
   name: 'rrshoot',
   description: 'Roll a chamber and timeout the losing target.',
 
-  async execute({ client, channel, userstate, args }) {
+  async execute({ client, channel, userstate, args, audit }) {
 
     if (gameState.isOnCooldown) {
+      audit?.cooldown();
       logger.warn('Attempted to shoot while on cooldown', { username: userstate.username });
       return;
     }
@@ -33,16 +34,25 @@ const rrshoot = {
       shooterIsTarget = false;
     }
 
+    const chambersBefore = gameState.currentChambers;
     const roll = Math.floor(Math.random() * gameState.currentChambers) + 1;
     const lost = roll === 1;
 
     gameState.currentChambers--;
+    audit?.set({
+      target: targetUsername, roll, lost,
+      total_chambers: gameState.CHAMBERS, chambers_before: chambersBefore,
+      chambers_remaining: gameState.currentChambers,
+      next_chambers: lost ? gameState.CHAMBERS : gameState.currentChambers,
+      timeout_seconds: lost ? gameState.TIMEOUT_SECONDS : 0,
+    });
 
     logger.info('Gun shooted', { targetUsername, roll, lost });
 
     if (lost) {
       gameState.currentChambers = gameState.CHAMBERS;
-      await deaths.increment(targetUsername);
+      const deathCount = await deaths.increment(targetUsername);
+      audit?.set({ death_count: deathCount });
       if (!shooterIsTarget) {
         await client.say(
           channel,
@@ -58,6 +68,7 @@ const rrshoot = {
       try {
         await client.timeout(channel, targetUsername, gameState.TIMEOUT_SECONDS, gameState.TIMEOUT_REASON);
       } catch (err) {
+        audit?.error(err);
         logger.error('Failed to timeout user — is the bot a mod?', { targetUsername, err: err.message });
         await client.say(channel, `Even legends such as @${targetDisplayName} can't escape their fate!.`);
       }

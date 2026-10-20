@@ -12,4 +12,5 @@ function check(directory) {
   }
 }
 check('src');
+check('web');
 check('.github/checks');

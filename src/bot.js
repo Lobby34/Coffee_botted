@@ -7,6 +7,9 @@ const { createClient } = require('./lib/twitch');
 const { loadCommands } = require('./commands');
 const { createMessageHandler } = require('./lib/messageHandler');
 
+let messageHandler;
+let brewDrops;
+
 async function main() {
   logger.info('Starting bot...', {
     channel: config.twitch.channelName,
@@ -27,23 +30,40 @@ async function main() {
     logger.info(`Connected to Twitch`, { addr, port, channel: config.twitch.channelName });
   });
 
-  client.on('message', createMessageHandler({
+  messageHandler = createMessageHandler({
     commands, client, prefix: config.bot.commandPrefix, logger,
-  }));
+    logStore: require('./lib/commandLogStore'),
+  });
+  client.on('message', messageHandler);
 
+  if (config.bot.brewEnabled) {
+    const { createDropScheduler } = require('./lib/brew/scheduler');
+    brewDrops=createDropScheduler({ client,service:require('./lib/brew').getService(),logger });
+    client.on('connected',brewDrops.start);
+  }
   await client.connect();
 }
 
-// Graceful shutdown on SIGINT/SIGTERM
-process.on('SIGTERM', () => {
-  logger.info('Received SIGTERM, shutting down gracefully...');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  logger.info('Received SIGINT, shutting down gracefully...');
-  process.exit(0);
-});
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info('Shutting down', { signal });
+  const deadline = setTimeout(() => process.exit(1), 8000);
+  try {
+    await brewDrops?.stop();
+    await messageHandler?.stop();
+    await require('./lib/commandLogStore').flush();
+    await require('./lib/database').close();
+    clearTimeout(deadline);
+    process.exit(0);
+  } catch (err) {
+    logger.error('Shutdown failed', { err: err.message });
+    process.exit(1);
+  }
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Global error handlers
 process.on('unhandledRejection', (reason) => {

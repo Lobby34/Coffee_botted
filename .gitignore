@@ -8,3 +8,6 @@ pgdata/
 
 test/*
 OAUTH.md
+
+.env.*
+!.env*.example

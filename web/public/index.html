@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Brew · Coffee crafting</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="/assets/coffee.png" alt="">Brew<span>COFFEE CRAFTING</span></a>
+    <div class="account"><span id="identity">Your coffee collection awaits</span><a id="login" class="button" href="/auth/twitch/start">Sign in with Twitch</a><button id="logout" class="quiet" hidden>Sign out</button></div>
+  </header>
+  <main>
+    <section class="intro"><div><p class="eyebrow">BEANS TO BRAGGING RIGHTS</p><h1>The coffee bench.</h1><p>Five ingredients. Your choice of extras. One new coffee.</p></div><div class="how"><strong>HOW TO BREW</strong><span>Pick one Beans, Filter, Grinder, Mug, and Liquid.<br>Add distinct extras, check your odds, then brew.</span></div></section>
+    <div id="notice" class="notice" role="status" aria-live="polite">Sign in to receive your starter ingredients and open your inventory.</div>
+    <div class="workspace">
+      <section class="panel inventory-panel"><div class="panel-heading"><h2>Your inventory</h2><span id="inventory-count">—</span></div><p class="hint">Click ingredients to select them. Drag items to move or swap stacks; on touch, use Move items. Every selected item is consumed.</p><button id="move-mode" class="quiet" aria-pressed="false">Move items</button><div class="grid-scroll"><div id="inventory" class="inventory" aria-label="Inventory"></div></div><div id="rarity-key" class="rarity-key"></div><p class="hint footer-note">Silent ingredient drops go to chat-connected viewers. Recent chat participants have a slightly better chance.</p></section>
+      <aside class="panel bench"><div class="panel-heading"><h2>Your recipe</h2><button id="clear" class="quiet">Clear</button></div><div id="recipe" class="recipe"></div><h3>Extras <span>optional</span></h3><div id="extras" class="extras"></div><div class="odds-heading"><h3>Outcome probabilities</h3><span id="preview-state">Choose five ingredients</span></div><div id="odds" class="odds"></div><button id="craft" class="brew-button" disabled>Brew coffee</button><p class="hint">No crafting cooldown. Check the percentages before each brew.</p></aside>
+    </div>
+    <details id="admin" class="panel admin" hidden><summary>Stream controls</summary><p id="bot-status"></p><button id="authorize-bot" class="button">Authorize coffee_botted for viewer drops</button><p class="hint">Authorize with the bot account, not your player account. Existing stream credentials remain separate.</p><label for="settings">Game configuration</label><textarea id="settings" rows="16" spellcheck="false"></textarea><button id="save-settings" class="button">Save configuration</button><p class="hint">Mark known bots by adding their lowercase usernames to drops.excludedLogins.</p></details>
+  </main>
+  <dialog id="result" class="result" aria-labelledby="result-title"><button id="close-result" class="quiet">Close</button><div id="result-content" role="status"></div></dialog>
+  <footer>Made for the coffee break between everything else. <a href="https://github.com/jdecked/twemoji">Emoji artwork: Twemoji</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC-BY 4.0</a></footer>
+</body>
+</html>

@@ -1,0 +1,86 @@
+name: coffee-brew-dev
+
+services:
+  brew-web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.dev
+    environment:
+      DB_HOST: postgres-dev
+      DB_PORT: "5432"
+      DB_NAME: brew_dev
+      BREW_PUBLIC_URL: https://brew.lobby34.eu
+      BREW_ADMIN_USER_IDS: "143492139"
+      BREW_BOT_USER_ID: "1506917066"
+      BREW_BOT_TOKEN_FILE: /app/data/brew-bot-tokens.json
+    ports:
+      - "127.0.0.1:8092:8080"
+    volumes:
+      - brew-bot-data:/app/data
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    networks:
+      default:
+      proxy:
+        aliases:
+          - brew-web-dev
+
+  postgres-dev:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:?Development DB_USER is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Development DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:?Development DB_NAME is required}
+    volumes:
+      - brew-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  bot-dev:
+    profiles: ["bot"]
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.dev
+    environment:
+      CHANNEL_NAME: lobbymante34
+      DB_HOST: postgres-dev
+      DB_PORT: "5432"
+      DB_NAME: brew_dev
+      BREW_ENABLED: "true"
+      BREW_PUBLIC_URL: https://brew.lobby34.eu
+      TWITCH_MANAGED_OVERRIDE_FILE: /app/data/brew-bot-tokens.json
+      TWITCH_TOKEN_MODE: managed
+      TWITCH_TOKEN_FILE: /run/managed-twitch/twitch-tokens.json
+      MESSAGE_COUNTER_FILE: /app/data/message-counters.json
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    volumes:
+      - brew-bot-data:/app/data
+      - managed-twitch-tokens:/run/managed-twitch:ro
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+volumes:
+  brew-postgres-data:
+  brew-bot-data:
+  managed-twitch-tokens:
+    external: true
+    name: coffee_botted_twitch-tokens
+
+networks:
+  proxy:
+    external: true
+    name: NginxMcApi-Network

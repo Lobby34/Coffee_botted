@@ -1,38 +1,43 @@
 'use strict';
 
-function createMessageHandler({ commands, client, prefix, logger }) {
-  return async (channel, userstate, message, self) => {
+const { runAudited } = require('./commandAudit');
+
+function createMessageHandler({ commands, client, prefix, logger, logStore }) {
+  async function handle(channel, userstate, message, self) {
     if (self) return;
     const [rawCommand, ...args] = message.startsWith(prefix)
       ? message.slice(prefix.length).trim().split(/\s+/) : [];
     const command = rawCommand ? commands.get(rawCommand.toLowerCase()) : undefined;
     const pending = [];
-    // Automatic replies also run on query messages; silent counter queries stay read-only.
-    {
-      for (const observer of commands.values()) {
-        if (typeof observer.observe !== 'function' || !observer.matches(message)) continue;
-        if (!observer.automaticReply && command && typeof command.observe === 'function') continue;
-        pending.push((async () => {
-          try {
-            await observer.observe({ client, channel, userstate, message });
-          } catch (err) {
-            logger.error('Unhandled error in message counter', { command: observer.name, err: err.message });
-          }
-        })());
-      }
+    const invoke = (observer, trigger, execute) => runAudited({
+      command: observer, trigger, execute, client, channel, userstate, message, args, logger, logStore,
+    });
+    // Counter queries remain read-only; automatic replies also observe commands.
+    for (const observer of commands.values()) {
+      if (typeof observer.observe !== 'function' || !observer.matches(message)) continue;
+      if (!observer.automaticReply && command && typeof command.observe === 'function') continue;
+      pending.push(invoke(observer, observer.automaticReply ? 'automatic' : 'observer', context => observer.observe(context)));
     }
     if (command && !command.automaticReply) {
-      pending.push((async () => {
-        logger.info('Command invoked', { command: command.name, user: userstate.username, channel });
-        try {
-          await command.execute({ client, channel, userstate, message, args });
-        } catch (err) {
-          logger.error('Unhandled error in command', { command: command.name, err: err.message });
-        }
-      })());
+      logger.info('Command invoked', { command: command.name, user: userstate.username, channel });
+      pending.push(invoke(command, 'command', context => command.execute(context)));
     }
     await Promise.all(pending);
+  }
+  const active = new Set();
+  let stopped = false;
+  const handler = (...args) => {
+    if (stopped) return Promise.resolve();
+    const execution = handle(...args);
+    active.add(execution);
+    execution.then(() => active.delete(execution), () => active.delete(execution));
+    return execution;
   };
+  handler.stop = async () => {
+    stopped = true;
+    await Promise.allSettled([...active]);
+  };
+  return handler;
 }
 
 module.exports = { createMessageHandler };

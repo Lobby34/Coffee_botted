@@ -8,8 +8,9 @@ const checkDeaths = {
     name: 'rrdeaths',
     description: 'Return the top five persisted roulette death counts.',
 
-    async execute({ client, channel, userstate }) {
+    async execute({ client, channel, userstate, audit }) {
         if (gameState.isDeathOnCooldown) {
+            audit?.cooldown();
             logger.warn('Attempted to check deaths while on cooldown', { username: userstate.username });
             return;
         }
@@ -21,6 +22,7 @@ const checkDeaths = {
         logger.info('Deaths Checked', { username });
 
         const entries = await deaths.leaderboard();
+        audit?.set({ leaderboard: entries });
 
         if (entries.length === 0) {
             await client.say(channel, `The graveyard is EMPTY?? How is this possible?! monkaH`);

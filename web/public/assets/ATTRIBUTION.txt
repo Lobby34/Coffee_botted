@@ -1,0 +1,3 @@
+Twemoji graphics, Copyright Twitter, Inc and other contributors. Licensed CC-BY 4.0.
+Source: https://github.com/jdecked/twemoji/tree/v15.1.0/assets/72x72
+License: https://creativecommons.org/licenses/by/4.0/

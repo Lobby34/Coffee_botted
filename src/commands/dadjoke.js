@@ -8,8 +8,9 @@ const dadjoke = {
   name: 'dadjoke',
   description: 'Send a random PostgreSQL dad joke.',
 
-  async execute({ client, channel, userstate }) {
+  async execute({ client, channel, userstate, audit }) {
     if (gameState.isOnCooldown) {
+      audit?.cooldown();
       return; 
     }
 
@@ -21,6 +22,7 @@ const dadjoke = {
     try {
       const randomJoke = await jokes.random();
       if (!randomJoke) {
+        audit?.set({ empty: true });
         await client.say(channel, "I'm out of jokes! Please add some to the dadjokes table.");
         return;
       }
@@ -29,6 +31,7 @@ const dadjoke = {
       logger.info('Told a dad joke', { user: userstate.username });
 
     } catch (err) {
+      audit?.error(err);
       logger.error('Failed to load dad joke from PostgreSQL', { err: err.message });
       await client.say(channel, "My joke book is stuck closed right now! Sadge");
     }

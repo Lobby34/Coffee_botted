@@ -7,8 +7,9 @@ const spinChambers = {
     name: 'rrspin',
     description: `Spin the chambers and reset the game!`,
 
-    async execute({ client, channel, userstate }) {
+    async execute({ client, channel, userstate, audit }) {
         if (gameState.isOnCooldown) {
+            audit?.cooldown();
             logger.warn('Attempted to spin while on cooldown', { username: userstate.username });
             return;
         }
@@ -21,6 +22,7 @@ const spinChambers = {
         const username = userstate.username;
         const displayName = userstate['display-name'] || username;
 
+        audit?.set({ chambers_before: gameState.currentChambers, chambers_remaining: gameState.CHAMBERS });
         gameState.currentChambers = gameState.CHAMBERS;
 
         logger.info('Chambers spun', { username });

@@ -154,7 +154,7 @@ class TwitchClient extends EventEmitter {
       do {
         const query = cursor ? `?after=${encodeURIComponent(cursor)}` : '';
         const res = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions${query}`, {
-          headers: { 'Client-Id': config.twitch.clientId, 'Authorization': `Bearer ${config.twitch.accessToken}` },
+          headers: { 'Client-Id': config.twitch.clientId, 'Authorization': `Bearer ${this.userAccessToken()}` },
           signal: AbortSignal.timeout(10000),
         });
         if (!res.ok) throw new Error(`Subscription check failed (HTTP ${res.status})`);
@@ -197,14 +197,29 @@ class TwitchClient extends EventEmitter {
     return this.tokenCheck;
   }
 
+  userAccessToken() {
+    if (config.twitch.tokenMode === 'managed') {
+      const tokenFile = config.twitch.managedOverrideFile && fs.existsSync(config.twitch.managedOverrideFile) ? config.twitch.managedOverrideFile : config.twitch.tokenFile;
+      const tokens = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
+      if (typeof tokens.accessToken !== 'string' || !tokens.accessToken) {
+        throw new Error('Managed Twitch credentials have no access token');
+      }
+      config.twitch.accessToken = tokens.accessToken;
+    }
+    return config.twitch.accessToken;
+  }
+
   async checkToken() {
     // 1. Check if the current token is still valid
     const res = await fetch('https://id.twitch.tv/oauth2/validate', {
       signal: AbortSignal.timeout(10000),
-      headers: { 'Authorization': `OAuth ${config.twitch.accessToken}` }
+      headers: { 'Authorization': `OAuth ${this.userAccessToken()}` }
     });
 
     if (res.status === 401) {
+      if (config.twitch.tokenMode === 'managed') {
+        throw new Error('Managed Twitch token expired; waiting for its owner to refresh');
+      }
       logger.warn('Token expired or invalid. Attempting to refresh...');
       await this.performTokenRefresh();
     } else if (!res.ok) {
@@ -214,13 +229,16 @@ class TwitchClient extends EventEmitter {
       logger.info(`Token is valid. Expires in ${Math.floor(data.expires_in / 60)} minutes.`);
 
       // If it expires in less than 30 minutes, refresh it anyway just to be safe
-      if (data.expires_in < 1800) {
+      if (data.expires_in < 1800 && config.twitch.tokenMode !== 'managed') {
         await this.performTokenRefresh();
       }
     }
   }
 
   async performTokenRefresh() {
+    if (config.twitch.tokenMode === 'managed') {
+      throw new Error('Managed Twitch tokens must only be refreshed by their owner');
+    }
     const params = new URLSearchParams({
       client_id: config.twitch.clientId,
       client_secret: config.twitch.clientSecret,
@@ -277,7 +295,7 @@ class TwitchClient extends EventEmitter {
       signal: AbortSignal.timeout(10000),
       headers: {
         'Client-Id': config.twitch.clientId,
-        'Authorization': `Bearer ${config.twitch.accessToken}`,
+        'Authorization': `Bearer ${this.userAccessToken()}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -301,6 +319,8 @@ class TwitchClient extends EventEmitter {
   handleIncomingMessage(event) {
     const userstate = {
       username: event.chatter_user_login,
+      'user-id': event.chatter_user_id,
+      'message-id': event.message_id,
       'display-name': event.chatter_user_name,
       mod: event.badges?.some(b => b.set_id === 'moderator') || false,
       badges: event.badges?.reduce((acc, b) => { acc[b.set_id] = b.id; return acc; }, {}) || {}
@@ -340,6 +360,24 @@ class TwitchClient extends EventEmitter {
     logger.info('Chat reply sent', { durationMs });
   }
 
+  async getChatters() {
+    const users=[];
+    let cursor;
+    do {
+      const query=new URLSearchParams({ broadcaster_id:this.broadcaster.id,moderator_id:this.botUser.id,first:'1000' });
+      if (cursor) query.set('after',cursor);
+      const response=await fetch('https://api.twitch.tv/helix/chat/chatters?'+query,{
+        headers:{ 'Client-Id':config.twitch.clientId,Authorization:'Bearer '+this.userAccessToken() },
+        signal:AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw new Error('Chatters unavailable (HTTP '+response.status+'); moderator:read:chatters authorization is required');
+      const data=await response.json();
+      users.push(...data.data.map(user => ({ id:user.user_id,login:user.user_login,displayName:user.user_name })));
+      cursor=data.pagination?.cursor;
+    } while (cursor);
+    return users;
+  }
+
   // Timeout module
   async timeout(channel, username, duration, reason) {
     const users = await this.getUsers([username]);
@@ -350,7 +388,7 @@ class TwitchClient extends EventEmitter {
       signal: AbortSignal.timeout(10000),
       headers: {
         'Client-Id': config.twitch.clientId,
-        'Authorization': `Bearer ${config.twitch.accessToken}`,
+        'Authorization': `Bearer ${this.userAccessToken()}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
