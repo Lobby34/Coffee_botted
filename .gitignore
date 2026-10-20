@@ -5,3 +5,6 @@ logs/
 
 data/
 pgdata/
+
+test/
+OAUTH.md

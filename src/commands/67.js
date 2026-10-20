@@ -8,7 +8,7 @@ module.exports = {
   automaticReply: true,
   matches: message => message.includes('67'),
   async observe({ client, channel }) {
-    const count = gameState.increment('67');
+    const count = await gameState.increment('67');
     await client.say(channel, `This ABERRATION of a number has been said ${count} times`);
   },
   async execute() {

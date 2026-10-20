@@ -14,6 +14,10 @@ async function main() {
     env:     config.app.nodeEnv,
   });
 
+  await require('./gameStates/messageCounterGameState').initialize();
+  await require('./gameStates/dadjokeStore').initialize();
+  logger.info('PostgreSQL message counters and dad jokes ready');
+
   // Load commands from src/commands/
   const commands = loadCommands();
 

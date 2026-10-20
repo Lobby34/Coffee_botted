@@ -37,6 +37,14 @@ const config = {
     refreshToken:   savedTokens.refreshToken || required('TWITCH_REFRESH_TOKEN'),
   },
 
+  database: {
+    host: optional('DB_HOST', 'postgres'),
+    port: Number(optional('DB_PORT', '5432')),
+    user: required('DB_USER'),
+    password: required('DB_PASSWORD'),
+    database: required('DB_NAME'),
+  },
+
   bot: {
     commandPrefix: optional('COMMAND_PREFIX', '!'),
   },

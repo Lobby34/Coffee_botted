@@ -45,49 +45,15 @@ class TwitchClient extends EventEmitter {
         throw new Error('Could not resolve channel or bot user IDs');
       }
 
-      // Connect EventSub
-      if (this.ws) {
-        this.ws.removeAllListeners();
-        if (this.ws.readyState === WebSocket.OPEN) {
-            this.ws.close();
-        }
+      this.openSocket();
+      if (!this.subscriptionTimer) {
+        this.subscriptionTimer = setInterval(() => {
+          this.checkSubscription().catch(err => {
+            logger.error('Chat subscription check failed', { err: err.message });
+          });
+        }, 60 * 1000);
+        this.subscriptionTimer.unref();
       }
-
-      this.ws = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
-
-      this.ws.on('message', async (data) => {
-        try {
-          const message = JSON.parse(data);
-
-          if (message.metadata.message_type === 'session_welcome') {
-            const sessionId = message.payload.session.id;
-            await this.subscribeToChat(sessionId);
-            this.emit('connected', 'eventsub', 443);
-            logger.info('Successfully connected and subscribed to chat!');
-          }
-          else if (message.metadata.message_type === 'session_reconnect') {
-            logger.warn('Twitch requested a session reconnect. Auto-reconnecting...');
-            this.reconnect();
-          }
-          else if (message.metadata.message_type === 'notification') {
-            if (message.metadata.subscription_type === 'channel.chat.message') {
-              this.handleIncomingMessage(message.payload.event);
-            }
-          }
-        } catch (err) {
-          logger.error("\n CRITICAL EVENTSUB ERROR:", err.message, "\n");
-        }
-      });
-
-      // Reconnect Triggers
-      this.ws.on('close', () => {
-        logger.warn('Disconnected from Twitch EventSub. Auto-reconnecting in 5 seconds...');
-        this.reconnect();
-      });
-
-      this.ws.on('error', (err) => {
-        logger.error('WebSocket error', { err: err.message });
-      });
 
     } catch (err) {
       logger.error('Failed to connect EventSub client', { err: err.message });
@@ -95,11 +61,117 @@ class TwitchClient extends EventEmitter {
     }
   }
 
+  disposeSocket(socket) {
+    if (!socket) return;
+    clearTimeout(socket.watchdog);
+    socket.removeAllListeners();
+    // terminate() can emit an error while a connection is still opening.
+    socket.on('error', () => {});
+    socket.terminate();
+  }
+
+  openSocket(url = 'wss://eventsub.wss.twitch.tv/ws', previous = null) {
+    if (!previous) this.disposeSocket(this.ws);
+    const socket = new WebSocket(url);
+    this.ws = socket;
+    const armWatchdog = () => {
+      clearTimeout(socket.watchdog);
+      socket.watchdog = setTimeout(() => {
+        if (this.ws !== socket) return;
+        logger.warn('EventSub welcome or keepalive timed out; reconnecting');
+        this.reconnect();
+      }, socket.keepaliveMs || 15000);
+    };
+    armWatchdog();
+    socket.on('message', async data => {
+      if (this.ws !== socket && this.ws?.previous !== socket) return;
+      try {
+        const message = JSON.parse(data);
+        const type = message.metadata.message_type;
+        if (type === 'session_welcome') {
+          socket.sessionId = message.payload.session.id;
+          socket.keepaliveMs = (message.payload.session.keepalive_timeout_seconds || 10) * 1000 + 2000;
+          armWatchdog();
+          if (!previous) await this.subscribeToChat(socket.sessionId);
+          if (this.ws !== socket) return;
+          socket.subscribed = true;
+          this.disposeSocket(previous);
+          this.emit('connected', 'eventsub', 443);
+          logger.info('Successfully connected and subscribed to chat!');
+        } else if (type === 'session_keepalive' || type === 'notification') {
+          if (this.ws === socket) armWatchdog();
+          if (type === 'notification' && message.metadata.subscription_type === 'channel.chat.message') {
+            this.handleIncomingMessage(message.payload.event);
+          }
+        } else if (type === 'session_reconnect' && this.ws === socket) {
+          logger.warn('Twitch requested a session reconnect; migrating connection');
+          clearTimeout(socket.watchdog);
+          this.openSocket(message.payload.session.reconnect_url, socket);
+        } else if (type === 'revocation') {
+          logger.error('Twitch revoked a subscription', {
+            type: message.payload.subscription.type,
+            status: message.payload.subscription.status,
+          });
+          this.reconnect();
+        }
+      } catch (err) {
+        logger.error('EventSub message handling failed', { err: err.message });
+        if (this.ws === socket) this.reconnect();
+      }
+    });
+    socket.on('close', (code, reason) => {
+      clearTimeout(socket.watchdog);
+      if (this.ws !== socket) return;
+      this.disposeSocket(previous);
+      logger.warn('Disconnected from Twitch EventSub; reconnecting', { code, reason: String(reason) });
+      this.reconnect();
+    });
+    socket.on('error', err => {
+      logger.error('WebSocket error', { err: err.message });
+      if (this.ws === socket) this.reconnect();
+    });
+    // Also dispose the old connection if migration fails before welcome.
+    socket.previous = previous;
+  }
+
   reconnect() {
-    clearTimeout(this.reconnectTimer);
+    if (this.reconnectTimer) return;
+    if (this.ws) this.disposeSocket(this.ws.previous);
+    this.disposeSocket(this.ws);
+    this.ws = null;
     this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       this.connect();
     }, 5000);
+  }
+
+  async checkSubscription() {
+    const socket = this.ws;
+    if (!socket?.subscribed || this.subscriptionCheck) return;
+    this.subscriptionCheck = true;
+    try {
+      let cursor;
+      do {
+        const query = cursor ? `?after=${encodeURIComponent(cursor)}` : '';
+        const res = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions${query}`, {
+          headers: { 'Client-Id': config.twitch.clientId, 'Authorization': `Bearer ${config.twitch.accessToken}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) throw new Error(`Subscription check failed (HTTP ${res.status})`);
+        const data = await res.json();
+        if (data.data.some(subscription => subscription.type === 'channel.chat.message' &&
+            subscription.status === 'enabled' && subscription.transport.session_id === socket.sessionId &&
+            subscription.condition.broadcaster_user_id === this.broadcaster.id &&
+            subscription.condition.user_id === this.botUser.id)) return;
+        cursor = data.pagination?.cursor;
+      } while (cursor);
+      if (this.ws === socket) {
+        logger.warn('Chat subscription is missing; reconnecting and resubscribing');
+        this.reconnect();
+      }
+    } finally {
+      this.subscriptionCheck = false;
+    }
   }
 
   async getAppToken() {
@@ -108,7 +180,7 @@ class TwitchClient extends EventEmitter {
       client_secret: config.twitch.clientSecret,
       grant_type: 'client_credentials'
     });
-    const res = await fetch(`https://id.twitch.tv/oauth2/token`, { method: 'POST', body: params });
+    const res = await fetch(`https://id.twitch.tv/oauth2/token`, { method: 'POST', body: params, signal: AbortSignal.timeout(10000) });
     const data = await res.json();
 
     if (!res.ok || !data.access_token) {
@@ -128,6 +200,7 @@ class TwitchClient extends EventEmitter {
   async checkToken() {
     // 1. Check if the current token is still valid
     const res = await fetch('https://id.twitch.tv/oauth2/validate', {
+      signal: AbortSignal.timeout(10000),
       headers: { 'Authorization': `OAuth ${config.twitch.accessToken}` }
     });
 
@@ -157,6 +230,7 @@ class TwitchClient extends EventEmitter {
 
     const res = await fetch('https://id.twitch.tv/oauth2/token', {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       body: params
     });
 
@@ -186,6 +260,7 @@ class TwitchClient extends EventEmitter {
   async getUsers(logins) {
     const query = logins.map(login => `login=${login}`).join('&');
     const res = await fetch(`https://api.twitch.tv/helix/users?${query}`, {
+      signal: AbortSignal.timeout(10000),
       headers: {
         'Client-Id': config.twitch.clientId,
         'Authorization': `Bearer ${this.appToken}`
@@ -199,6 +274,7 @@ class TwitchClient extends EventEmitter {
   async subscribeToChat(sessionId) {
     const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       headers: {
         'Client-Id': config.twitch.clientId,
         'Authorization': `Bearer ${config.twitch.accessToken}`,
@@ -236,8 +312,10 @@ class TwitchClient extends EventEmitter {
   }
 
   async say(channel, text) {
+    const started = performance.now();
     const res = await fetch('https://api.twitch.tv/helix/chat/messages', {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       headers: {
         'Client-Id': config.twitch.clientId,
         'Authorization': `Bearer ${this.appToken}`,
@@ -250,10 +328,16 @@ class TwitchClient extends EventEmitter {
       })
     });
 
+    const data = await res.json();
+    const durationMs = Math.round(performance.now() - started);
     if (!res.ok) {
-      const err = await res.json();
-      logger.error('Failed to send message via Helix', { err: err.message });
+      throw new Error(`Failed to send message via Helix (HTTP ${res.status}): ${data.message || 'Unknown error'}`);
     }
+    const result = data.data?.[0];
+    if (!result?.is_sent) {
+      throw new Error(`Twitch dropped chat message: ${result?.drop_reason?.message || 'Unknown reason'}`);
+    }
+    logger.info('Chat reply sent', { durationMs });
   }
 
   // Timeout module
@@ -263,6 +347,7 @@ class TwitchClient extends EventEmitter {
     const targetId = users[0].id;
     const res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${this.broadcaster.id}&moderator_id=${this.botUser.id}`, {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       headers: {
         'Client-Id': config.twitch.clientId,
         'Authorization': `Bearer ${config.twitch.accessToken}`,

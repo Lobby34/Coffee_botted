@@ -6,11 +6,11 @@ module.exports = {
   name: 'zuh',
   description: 'Show the persistent zuh message count.',
   matches: message => message.toLowerCase().includes('zuh'),
-  observe() {
-    gameState.increment('zuh');
+  async observe() {
+    await gameState.increment('zuh');
   },
   async execute({ client, channel }) {
-    const count = gameState.get('zuh');
+    const count = await gameState.get('zuh');
     await client.say(channel, `${count} zuh .`);
   },
 };
