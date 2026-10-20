@@ -1,6 +1,6 @@
 # Brew development
 
-Development worktree: `/home/srvub24/Coffee_botted-dev`, branch `codex/dev`.
+Development worktree: `/home/srvub24/Coffee_botted-dev`, branch `dev`.
 Changes remain uncommitted. Production uses a separate checkout and database.
 
 ## Services
